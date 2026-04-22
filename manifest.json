@@ -1,0 +1,29 @@
+{
+  "name": "英國旅遊計畫 2026",
+  "short_name": "UK Travel",
+  "description": "英國旅遊行程規劃網站",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAFAF8",
+  "theme_color": "#6B8F71",
+  "lang": "zh-TW",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "每日行程", "url": "/", "description": "查看行程規劃" },
+    { "name": "記帳區",   "url": "/?section=expenses", "description": "記錄旅行花費" }
+  ]
+}

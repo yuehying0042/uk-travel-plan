@@ -3,12 +3,13 @@
 const App = (() => {
 
   // ── State ───────────────────────────────────────────────────────────
-  let currentModal = null;
-  let editingId    = null;
+  let currentModal   = null;
+  let editingId      = null;
   let allAttractions = [];
   let allTickets     = [];
   let ticketFilter   = 'all';
-  const itemStore    = {};   // id → raw item data for pre-populating edit forms
+  const itemStore    = {};
+  let deferredPwa    = null;
 
   // ── Notion API ──────────────────────────────────────────────────────
 
@@ -16,8 +17,7 @@ const App = (() => {
     const url  = `/.netlify/functions/notion?path=${encodeURIComponent(path)}`;
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
-
-    const res = await fetch(url, opts);
+    const res  = await fetch(url, opts);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.message || `Notion error ${res.status}`);
     return json;
@@ -40,7 +40,7 @@ const App = (() => {
     return notionRequest(`pages/${pageId}`, 'PATCH', { archived: true });
   }
 
-  // ── Notion Property Helpers ─────────────────────────────────────────
+  // ── Property Helpers ────────────────────────────────────────────────
 
   const prop = {
     title:  (v) => ({ title:     [{ text: { content: String(v || '') } }] }),
@@ -113,31 +113,40 @@ const App = (() => {
         if (!days[key]) days[key] = { date, day, activities: [] };
 
         const item = {
-          id:           page.id,
-          time:         get.text(p, 'Time'),
-          name:         get.title(p, 'Name'),
-          attractionCN: get.text(p, 'AttractionCN'),
-          attractionEN: get.text(p, 'AttractionEN'),
-          mapUrl:       get.url(p, 'GoogleMaps'),
-          notes:        get.text(p, 'Notes'),
-          _date:        date,
-          _day:         day,
+          id: page.id, time: get.text(p, 'Time'), name: get.title(p, 'Name'),
+          attractionCN: get.text(p, 'AttractionCN'), attractionEN: get.text(p, 'AttractionEN'),
+          mapUrl: get.url(p, 'GoogleMaps'), notes: get.text(p, 'Notes'),
+          _date: date, _day: day,
         };
         itemStore[page.id] = item;
         days[key].activities.push(item);
       });
 
-      el.innerHTML = Object.values(days).map(({ date, day, activities }) => `
-        <div class="day-group">
-          <div class="day-header">
-            ${day ? `<span class="day-num">DAY ${day}</span>` : ''}
-            <span class="day-date">${formatDate(date)}</span>
+      el.innerHTML = Object.values(days).map(({ date, day, activities }, gi) => {
+        const mapUrl = buildDayMapUrl(activities);
+        const key    = date || 'unknown';
+        return `
+          <div class="day-group" style="animation-delay:${gi * 0.07}s">
+            <div class="day-header" id="day-header-${key}" onclick="App.toggleDay('${key}')">
+              <div class="day-header-left">
+                ${day ? `<span class="day-label">DAY ${day}</span>` : ''}
+                <span class="day-date">${formatDate(date)}</span>
+              </div>
+              <div class="day-header-right">
+                ${mapUrl ? `<a class="day-map-btn" href="${mapUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">查看地圖</a>` : ''}
+                <span class="collapse-icon">▾</span>
+              </div>
+            </div>
+            <div class="day-body" id="day-body-${key}">
+              <div class="day-timeline">
+                <ul class="activity-list">
+                  ${activities.map((a, i) => renderActivity(a, i)).join('')}
+                </ul>
+              </div>
+            </div>
           </div>
-          <ul class="activity-list">
-            ${activities.map(renderActivity).join('')}
-          </ul>
-        </div>
-      `).join('');
+        `;
+      }).join('');
 
     } catch (e) {
       el.innerHTML = '<div class="empty-state">載入失敗，請確認 Notion 設定是否正確</div>';
@@ -145,18 +154,18 @@ const App = (() => {
     }
   }
 
-  function renderActivity(a) {
+  function renderActivity(a, index = 0) {
     return `
-      <li class="activity-item" id="act-${a.id}">
+      <li class="activity-item" id="act-${a.id}" style="animation-delay:${index * 0.06 + 0.1}s">
+        <span class="timeline-dot"></span>
         <div class="activity-time">${a.time || '—'}</div>
         <div class="activity-body">
           <div class="activity-name">${escHtml(a.name)}</div>
           ${a.attractionCN || a.attractionEN ? `
             <div class="activity-sub">
               ${escHtml(a.attractionCN)}${a.attractionEN ? ` · <em>${escHtml(a.attractionEN)}</em>` : ''}
-            </div>
-          ` : ''}
-          ${a.notes ? `<div class="activity-sub" style="margin-top:3px">${escHtml(a.notes)}</div>` : ''}
+            </div>` : ''}
+          ${a.notes ? `<div class="activity-sub" style="margin-top:2px">${escHtml(a.notes)}</div>` : ''}
         </div>
         <div class="activity-actions">
           ${a.mapUrl ? `<a class="map-link" href="${a.mapUrl}" target="_blank" rel="noopener">地圖</a>` : ''}
@@ -165,6 +174,23 @@ const App = (() => {
         </div>
       </li>
     `;
+  }
+
+  function toggleDay(key) {
+    const body   = document.getElementById(`day-body-${key}`);
+    const header = document.getElementById(`day-header-${key}`);
+    if (!body) return;
+    const isCollapsed = body.classList.toggle('collapsed');
+    header.classList.toggle('collapsed', isCollapsed);
+  }
+
+  function buildDayMapUrl(activities) {
+    const places = activities
+      .filter(a => a.attractionEN || a.attractionCN)
+      .map(a => encodeURIComponent((a.attractionEN || a.attractionCN) + ', UK'));
+    if (!places.length) return null;
+    if (places.length === 1) return `https://www.google.com/maps/search/${places[0]}`;
+    return `https://www.google.com/maps/dir/${places.join('/')}`;
   }
 
   // ── Expenses ────────────────────────────────────────────────────────
@@ -183,12 +209,9 @@ const App = (() => {
       const expenses = data.results.map(page => {
         const p = page.properties;
         const item = {
-          id:       page.id,
-          name:     get.title(p, 'Name'),
-          date:     get.date(p, 'Date'),
-          amount:   get.number(p, 'Amount') ?? 0,
-          category: get.select(p, 'Category'),
-          notes:    get.text(p, 'Notes'),
+          id: page.id, name: get.title(p, 'Name'), date: get.date(p, 'Date'),
+          amount: get.number(p, 'Amount') ?? 0, category: get.select(p, 'Category'),
+          notes: get.text(p, 'Notes'),
         };
         itemStore[page.id] = item;
         return item;
@@ -204,9 +227,7 @@ const App = (() => {
       el.innerHTML = `
         <table class="expense-table">
           <thead>
-            <tr>
-              <th>日期</th><th>項目</th><th>類別</th><th>金額（£）</th><th>備注</th><th></th>
-            </tr>
+            <tr><th>日期</th><th>項目</th><th>類別</th><th>金額（£）</th><th>備注</th><th></th></tr>
           </thead>
           <tbody>
             ${expenses.map(e => `
@@ -227,7 +248,6 @@ const App = (() => {
           </tbody>
         </table>
       `;
-
     } catch (e) {
       el.innerHTML = '<div class="empty-state">載入失敗，請確認 Notion 設定是否正確</div>';
       showSetupBanner();
@@ -241,16 +261,16 @@ const App = (() => {
     const top3  = Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
     el.innerHTML = `
-      <div class="summary-card">
+      <div class="summary-card" style="animation-delay:0.05s">
         <div class="summary-label">總支出</div>
         <div class="summary-value accent">£${total.toFixed(2)}</div>
       </div>
-      <div class="summary-card">
+      <div class="summary-card" style="animation-delay:0.1s">
         <div class="summary-label">筆數</div>
         <div class="summary-value">${expenses.length}</div>
       </div>
-      ${top3.map(([cat, amt]) => `
-        <div class="summary-card">
+      ${top3.map(([cat, amt], i) => `
+        <div class="summary-card" style="animation-delay:${(i + 2) * 0.05 + 0.05}s">
           <div class="summary-label">${escHtml(cat)}</div>
           <div class="summary-value">£${amt.toFixed(2)}</div>
         </div>
@@ -272,13 +292,9 @@ const App = (() => {
       allTickets = data.results.map(page => {
         const p = page.properties;
         const item = {
-          id:     page.id,
-          name:   get.title(p, 'Name'),
-          type:   get.select(p, 'Type'),
-          date:   get.date(p, 'Date'),
-          amount: get.number(p, 'Amount') ?? 0,
-          link:   get.url(p, 'Link'),
-          notes:  get.text(p, 'Notes'),
+          id: page.id, name: get.title(p, 'Name'), type: get.select(p, 'Type'),
+          date: get.date(p, 'Date'), amount: get.number(p, 'Amount') ?? 0,
+          link: get.url(p, 'Link'), notes: get.text(p, 'Notes'),
         };
         itemStore[page.id] = item;
         return item;
@@ -286,7 +302,6 @@ const App = (() => {
 
       initTicketTabs();
       renderTickets();
-
     } catch (e) {
       el.innerHTML = '<div class="empty-state">載入失敗，請確認 Notion 設定是否正確</div>';
       showSetupBanner();
@@ -313,8 +328,8 @@ const App = (() => {
       return;
     }
 
-    el.innerHTML = `<div class="ticket-grid">${filtered.map(t => `
-      <div class="ticket-card" id="tkt-${t.id}">
+    el.innerHTML = `<div class="ticket-grid">${filtered.map((t, i) => `
+      <div class="ticket-card" id="tkt-${t.id}" style="animation-delay:${i * 0.07}s">
         <div class="ticket-actions">
           <button class="btn-ghost" onclick="App.openModal('ticket','${t.id}')">編輯</button>
           <button class="btn-danger" onclick="App.deleteItem('${t.id}','tickets')">刪除</button>
@@ -346,20 +361,15 @@ const App = (() => {
       allAttractions = data.results.map(page => {
         const p = page.properties;
         const item = {
-          id:     page.id,
-          nameCN: get.title(p, 'NameCN'),
-          nameEN: get.text(p, 'NameEN'),
-          city:   get.select(p, 'City'),
-          desc:   get.text(p, 'Description'),
-          mapUrl: get.url(p, 'GoogleMaps'),
-          image:  get.url(p, 'Image'),
+          id: page.id, nameCN: get.title(p, 'NameCN'), nameEN: get.text(p, 'NameEN'),
+          city: get.select(p, 'City'), desc: get.text(p, 'Description'),
+          mapUrl: get.url(p, 'GoogleMaps'), image: get.url(p, 'Image'),
         };
         itemStore[page.id] = item;
         return item;
       });
 
       renderAttractions(allAttractions);
-
     } catch (e) {
       el.innerHTML = '<div class="empty-state">載入失敗，請確認 Notion 設定是否正確</div>';
       showSetupBanner();
@@ -368,14 +378,13 @@ const App = (() => {
 
   function renderAttractions(list) {
     const el = document.getElementById('attraction-content');
-
     if (!list.length) {
       el.innerHTML = '<div class="empty-state">尚無景點，點擊右上角「＋ 新增景點」</div>';
       return;
     }
 
-    el.innerHTML = `<div class="attraction-grid">${list.map(a => `
-      <div class="attraction-card" id="att-${a.id}">
+    el.innerHTML = `<div class="attraction-grid">${list.map((a, i) => `
+      <div class="attraction-card" id="att-${a.id}" style="animation-delay:${i * 0.07}s">
         <div class="attraction-actions">
           <button class="btn-ghost" onclick="App.openModal('attraction','${a.id}')">編輯</button>
           <button class="btn-danger" onclick="App.deleteItem('${a.id}','attractions')">刪除</button>
@@ -400,9 +409,7 @@ const App = (() => {
   function filterAttractions(q) {
     const lower    = q.toLowerCase();
     const filtered = allAttractions.filter(a =>
-      a.nameCN.includes(q) ||
-      a.nameEN.toLowerCase().includes(lower) ||
-      a.city.toLowerCase().includes(lower)
+      a.nameCN.includes(q) || a.nameEN.toLowerCase().includes(lower) || a.city.toLowerCase().includes(lower)
     );
     renderAttractions(filtered);
   }
@@ -422,11 +429,8 @@ const App = (() => {
       const tips = data.results.map(page => {
         const p = page.properties;
         const item = {
-          id:       page.id,
-          title:    get.title(p, 'Name'),
-          category: get.select(p, 'Category'),
-          priority: get.select(p, 'Priority'),
-          content:  get.text(p, 'Content'),
+          id: page.id, title: get.title(p, 'Name'), category: get.select(p, 'Category'),
+          priority: get.select(p, 'Priority'), content: get.text(p, 'Content'),
         };
         itemStore[page.id] = item;
         return item;
@@ -444,11 +448,12 @@ const App = (() => {
         categories[cat].push(t);
       });
 
+      let tipIndex = 0;
       el.innerHTML = Object.entries(categories).map(([cat, items]) => `
         <div class="tips-category">
           <div class="tips-category-header">${escHtml(cat)}</div>
           ${items.map(t => `
-            <div class="tip-item" id="tip-${t.id}">
+            <div class="tip-item" id="tip-${t.id}" style="animation-delay:${(tipIndex++) * 0.05}s">
               <div class="priority-dot priority-${priorityClass(t.priority)}"></div>
               <div class="tip-body">
                 <div class="tip-title">${escHtml(t.title)}</div>
@@ -462,7 +467,6 @@ const App = (() => {
           `).join('')}
         </div>
       `).join('');
-
     } catch (e) {
       el.innerHTML = '<div class="empty-state">載入失敗，請確認 Notion 設定是否正確</div>';
       showSetupBanner();
@@ -473,6 +477,116 @@ const App = (() => {
     if (p === '高') return 'high';
     if (p === '中') return 'mid';
     return 'low';
+  }
+
+  // ── Receipt Scanner ──────────────────────────────────────────────────
+
+  async function scanReceipt(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const preview = document.getElementById('scanner-preview');
+    const img     = document.getElementById('scanner-img');
+    const status  = document.getElementById('scanner-status');
+    const bar     = document.getElementById('scanner-bar');
+
+    img.src = URL.createObjectURL(file);
+    preview.style.display = 'block';
+    status.style.color    = 'var(--muted)';
+    bar.style.width       = '5%';
+
+    if (!window.Tesseract) {
+      status.textContent = '載入辨識引擎（首次需下載約 10MB）...';
+      try {
+        await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+      } catch {
+        status.textContent = '引擎載入失敗，請確認網路連線';
+        return;
+      }
+    }
+
+    status.textContent = '辨識中...';
+    bar.style.width = '10%';
+
+    try {
+      const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round(m.progress * 80) + 10;
+            bar.style.width = pct + '%';
+            status.textContent = `辨識中 ${pct}%...`;
+          }
+        }
+      });
+
+      bar.style.width = '100%';
+      const parsed = parseReceiptText(text);
+
+      if (parsed.name)     setField('Name',     parsed.name);
+      if (parsed.amount)   setField('Amount',   parsed.amount);
+      if (parsed.date)     setField('Date',     parsed.date);
+      if (parsed.category) setField('Category', parsed.category);
+
+      const filled = [parsed.name, parsed.amount, parsed.date].filter(Boolean).length;
+      status.textContent  = filled > 0 ? `✓ 辨識完成（填入 ${filled} 個欄位），請確認後儲存` : '辨識完成，未能自動填入，請手動輸入';
+      status.style.color  = filled > 0 ? 'var(--accent)' : 'var(--muted)';
+    } catch (e) {
+      status.textContent = '辨識失敗，請手動輸入';
+      status.style.color = '#c07a72';
+      bar.style.width    = '0%';
+    }
+  }
+
+  function parseReceiptText(text) {
+    // Amount
+    let amount = null;
+    const amtMatch =
+      text.match(/(?:total|amount due|amount|subtotal|to pay|balance)[:\s]*£?\s*(\d+[.,]\d{2})/i) ||
+      text.match(/£\s*(\d+[.,]\d{2})/i) ||
+      text.match(/(\d+[.,]\d{2})\s*(?:GBP|£)/i);
+    if (amtMatch) amount = parseFloat(amtMatch[1].replace(',', '.'));
+
+    // Date
+    let date = null;
+    const dtMatch = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+    if (dtMatch) {
+      const [, d, m, y] = dtMatch;
+      const year = y.length === 2 ? '20' + y : y;
+      date = `${year}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+
+    // Merchant name (first meaningful line)
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2 && !/^\d+$/.test(l));
+    const name  = lines[0] || '';
+
+    // Category
+    const lower = text.toLowerCase();
+    let category = '其他';
+    if (/restaurant|cafe|coffee|food|eat|meal|pub|bar|bistro|pizza|burger|bakery|deli/.test(lower))          category = '餐飲';
+    else if (/train|bus|taxi|tube|underground|rail|tfl|coach|oyster|transport/.test(lower))                  category = '交通';
+    else if (/museum|gallery|theatre|theater|ticket|entry|admission|castle|palace|tour/.test(lower))         category = '門票';
+    else if (/hotel|hostel|inn|accommodation|b&b|bed and breakfast|lodge/.test(lower))                        category = '住宿';
+    else if (/shop|store|market|supermarket|tesco|sainsbury|boots|marks|asda|co-op|waitrose/.test(lower))    category = '購物';
+
+    return { name, amount, date, category };
+  }
+
+  function setField(key, value) {
+    const el = document.getElementById(`field-${key}`);
+    if (!el) return;
+    el.value = value;
+    el.style.transition = 'background 0.6s ease';
+    el.style.background = 'rgba(107,143,113,0.15)';
+    setTimeout(() => { el.style.background = ''; }, 2000);
+  }
+
+  async function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
   }
 
   // ── Modal & Forms ────────────────────────────────────────────────────
@@ -498,28 +612,23 @@ const App = (() => {
         { key: 'Notes',      label: '備注',            type: 'textarea', placeholder: '需提前預約...' },
       ],
       toProps: (d) => ({
-        Name:         prop.title(d.Name),
-        Date:         prop.date(d.Date),
-        Day:          prop.number(d.Day),
-        Time:         prop.text(d.Time),
-        AttractionCN: prop.text(d.AttractionCN),
-        AttractionEN: prop.text(d.AttractionEN),
-        GoogleMaps:   prop.url(d.GoogleMaps),
-        Notes:        prop.text(d.Notes),
+        Name: prop.title(d.Name), Date: prop.date(d.Date), Day: prop.number(d.Day),
+        Time: prop.text(d.Time), AttractionCN: prop.text(d.AttractionCN),
+        AttractionEN: prop.text(d.AttractionEN), GoogleMaps: prop.url(d.GoogleMaps),
+        Notes: prop.text(d.Notes),
       }),
-      dbKey: 'ITINERARY',
-      reload: loadItinerary,
+      dbKey: 'ITINERARY', reload: loadItinerary,
       fillItem: (item) => ({
-        Name: item.name, Date: item._date, Day: item._day,
-        Time: item.time, AttractionCN: item.attractionCN,
-        AttractionEN: item.attractionEN, GoogleMaps: item.mapUrl,
-        Notes: item.notes,
+        Name: item.name, Date: item._date, Day: item._day, Time: item.time,
+        AttractionCN: item.attractionCN, AttractionEN: item.attractionEN,
+        GoogleMaps: item.mapUrl, Notes: item.notes,
       }),
     },
 
     expense: {
       title:  (id) => id ? '編輯支出' : '新增支出',
       fields: [
+        { type: 'scanner' },
         { row: [
           { key: 'Date',   label: '日期',     type: 'date' },
           { key: 'Amount', label: '金額（£）', type: 'number', placeholder: '0.00' },
@@ -531,14 +640,11 @@ const App = (() => {
         { key: 'Notes', label: '備注', type: 'textarea', placeholder: '...' },
       ],
       toProps: (d) => ({
-        Name:     prop.title(d.Name),
-        Date:     prop.date(d.Date),
-        Amount:   prop.number(d.Amount),
-        Category: prop.select(d.Category),
-        Notes:    prop.text(d.Notes),
+        Name: prop.title(d.Name), Date: prop.date(d.Date),
+        Amount: prop.number(d.Amount), Category: prop.select(d.Category),
+        Notes: prop.text(d.Notes),
       }),
-      dbKey: 'EXPENSES',
-      reload: loadExpenses,
+      dbKey: 'EXPENSES', reload: loadExpenses,
       fillItem: (item) => ({
         Name: item.name, Date: item.date, Amount: item.amount,
         Category: item.category, Notes: item.notes,
@@ -560,15 +666,10 @@ const App = (() => {
         { key: 'Notes', label: '備注',     type: 'textarea', placeholder: '...' },
       ],
       toProps: (d) => ({
-        Name:   prop.title(d.Name),
-        Type:   prop.select(d.Type),
-        Date:   prop.date(d.Date),
-        Amount: prop.number(d.Amount),
-        Link:   prop.url(d.Link),
-        Notes:  prop.text(d.Notes),
+        Name: prop.title(d.Name), Type: prop.select(d.Type), Date: prop.date(d.Date),
+        Amount: prop.number(d.Amount), Link: prop.url(d.Link), Notes: prop.text(d.Notes),
       }),
-      dbKey: 'TICKETS',
-      reload: loadTickets,
+      dbKey: 'TICKETS', reload: loadTickets,
       fillItem: (item) => ({
         Name: item.name, Type: item.type, Date: item.date,
         Amount: item.amount, Link: item.link, Notes: item.notes,
@@ -593,15 +694,11 @@ const App = (() => {
         { key: 'Image',       label: '封面圖片連結（選填）', type: 'url', placeholder: 'https://...' },
       ],
       toProps: (d) => ({
-        NameCN:      prop.title(d.NameCN),
-        NameEN:      prop.text(d.NameEN),
-        City:        prop.select(d.City),
-        Description: prop.text(d.Description),
-        GoogleMaps:  prop.url(d.GoogleMaps),
-        Image:       prop.url(d.Image),
+        NameCN: prop.title(d.NameCN), NameEN: prop.text(d.NameEN),
+        City: prop.select(d.City), Description: prop.text(d.Description),
+        GoogleMaps: prop.url(d.GoogleMaps), Image: prop.url(d.Image),
       }),
-      dbKey: 'ATTRACTIONS',
-      reload: loadAttractions,
+      dbKey: 'ATTRACTIONS', reload: loadAttractions,
       fillItem: (item) => ({
         NameCN: item.nameCN, NameEN: item.nameEN, City: item.city,
         Description: item.desc, GoogleMaps: item.mapUrl, Image: item.image,
@@ -621,13 +718,10 @@ const App = (() => {
         { key: 'Content', label: '內容', type: 'textarea', placeholder: '...' },
       ],
       toProps: (d) => ({
-        Name:     prop.title(d.Name),
-        Category: prop.select(d.Category),
-        Priority: prop.select(d.Priority),
-        Content:  prop.text(d.Content),
+        Name: prop.title(d.Name), Category: prop.select(d.Category),
+        Priority: prop.select(d.Priority), Content: prop.text(d.Content),
       }),
-      dbKey: 'TIPS',
-      reload: loadTips,
+      dbKey: 'TIPS', reload: loadTips,
       fillItem: (item) => ({
         Name: item.title, Category: item.category,
         Priority: item.priority, Content: item.content,
@@ -656,11 +750,12 @@ const App = (() => {
 
   function buildForm(fields, id) {
     const rows = fields.map(f =>
-      f.row
-        ? `<div class="form-row">${f.row.map(buildField).join('')}</div>`
-        : buildField(f)
+      f.type === 'scanner'
+        ? buildScannerField()
+        : f.row
+          ? `<div class="form-row">${f.row.map(buildField).join('')}</div>`
+          : buildField(f)
     );
-
     return `
       <form id="modal-form" onsubmit="App.saveModal(event)">
         ${rows.join('')}
@@ -669,6 +764,23 @@ const App = (() => {
           <button type="submit" class="btn-primary" id="modal-submit">${id ? '儲存變更' : '新增'}</button>
         </div>
       </form>
+    `;
+  }
+
+  function buildScannerField() {
+    return `
+      <div class="scanner-section">
+        <label class="scanner-btn">
+          📷 掃描收據自動填入
+          <input type="file" accept="image/*" capture="environment"
+            onchange="App.scanReceipt(this)" style="display:none">
+        </label>
+        <div id="scanner-preview" style="display:none">
+          <img id="scanner-img" class="scanner-img">
+          <div class="scanner-progress"><div class="scanner-progress-bar" id="scanner-bar"></div></div>
+          <div class="scanner-status" id="scanner-status"></div>
+        </div>
+      </div>
     `;
   }
 
@@ -708,11 +820,8 @@ const App = (() => {
 
     try {
       const properties = schema.toProps(data);
-      if (editingId) {
-        await updatePage(editingId, properties);
-      } else {
-        await createPage(CONFIG.DB[schema.dbKey], properties);
-      }
+      if (editingId) await updatePage(editingId, properties);
+      else            await createPage(CONFIG.DB[schema.dbKey], properties);
       closeModal();
       await schema.reload();
     } catch (err) {
@@ -741,6 +850,44 @@ const App = (() => {
     }
   }
 
+  // ── PWA Install Prompt ───────────────────────────────────────────────
+
+  function initPwa() {
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      deferredPwa = e;
+      if (!localStorage.getItem('pwa-dismissed')) showPwaBanner();
+    });
+  }
+
+  function showPwaBanner() {
+    const banner = document.createElement('div');
+    banner.className = 'pwa-banner';
+    banner.id = 'pwa-banner';
+    banner.innerHTML = `
+      <span class="pwa-banner-text">將網站加入手機桌面，隨時離線查看行程</span>
+      <div class="pwa-banner-actions">
+        <button class="pwa-install-btn" onclick="App.installPwa()">加入桌面</button>
+        <button class="pwa-dismiss-btn" onclick="App.dismissPwa()">稍後再說</button>
+      </div>
+    `;
+    document.body.appendChild(banner);
+  }
+
+  async function installPwa() {
+    if (!deferredPwa) return;
+    deferredPwa.prompt();
+    const { outcome } = await deferredPwa.userChoice;
+    if (outcome === 'accepted') dismissPwa();
+    deferredPwa = null;
+  }
+
+  function dismissPwa() {
+    localStorage.setItem('pwa-dismissed', '1');
+    const banner = document.getElementById('pwa-banner');
+    if (banner) banner.remove();
+  }
+
   // ── Utilities ───────────────────────────────────────────────────────
 
   function formatDate(dateStr) {
@@ -751,10 +898,8 @@ const App = (() => {
 
   function escHtml(str) {
     return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function showSetupBanner() {
@@ -768,9 +913,14 @@ const App = (() => {
     initNav();
     loadSection('itinerary');
     showSetupBanner();
+    initPwa();
   }
 
-  return { openModal, closeModal, saveModal, deleteItem, filterAttractions, init };
+  return {
+    openModal, closeModal, saveModal, deleteItem,
+    filterAttractions, toggleDay, scanReceipt,
+    installPwa, dismissPwa, init,
+  };
 })();
 
 document.addEventListener('DOMContentLoaded', App.init);

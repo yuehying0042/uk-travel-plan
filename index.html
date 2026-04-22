@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>英國旅遊計畫</title>
-  <meta name="theme-color" content="#6B8F71">
+  <meta name="theme-color" content="#c22b1f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="UK Travel">
@@ -47,6 +47,10 @@
 </nav>
 
 <main class="main">
+  <button class="sidebar-toggle" id="sidebar-toggle" aria-label="開啟選單"
+    onclick="App.toggleSidebar()">
+    <span></span><span></span><span></span>
+  </button>
 
   <!-- 每日行程 -->
   <section class="section active" id="section-itinerary">
@@ -131,6 +135,9 @@
   </section>
 
 </main>
+
+<!-- Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="App.toggleSidebar()"></div>
 
 <!-- Modal -->
 <div class="modal-overlay" id="modal-overlay" onclick="App.closeModal()">

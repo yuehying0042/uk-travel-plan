@@ -71,6 +71,10 @@ const App = (() => {
         item.classList.add('active');
         document.getElementById(`section-${section}`).classList.add('active');
         loadSection(section);
+        if (window.innerWidth <= 768) {
+          const sidebar = document.getElementById('sidebar');
+          if (sidebar && sidebar.classList.contains('open')) toggleSidebar();
+        }
       });
     });
   }
@@ -115,8 +119,8 @@ const App = (() => {
         const item = {
           id: page.id, time: get.text(p, 'Time'), name: get.title(p, 'Name'),
           attractionCN: get.text(p, 'AttractionCN'), attractionEN: get.text(p, 'AttractionEN'),
-          mapUrl: get.url(p, 'GoogleMaps'), notes: get.text(p, 'Notes'),
-          _date: date, _day: day,
+          mapUrl: get.url(p, 'GoogleMaps'), image: get.url(p, 'Image'),
+          notes: get.text(p, 'Notes'), _date: date, _day: day,
         };
         itemStore[page.id] = item;
         days[key].activities.push(item);
@@ -166,6 +170,13 @@ const App = (() => {
               ${escHtml(a.attractionCN)}${a.attractionEN ? ` · <em>${escHtml(a.attractionEN)}</em>` : ''}
             </div>` : ''}
           ${a.notes ? `<div class="activity-sub" style="margin-top:2px">${escHtml(a.notes)}</div>` : ''}
+          ${a.image ? `
+            <div class="activity-img-wrap img-frame-wrap">
+              <div class="img-frame-corners"></div>
+              <img class="attraction-img" src="${a.image}" alt="${escHtml(a.name)}" loading="lazy"
+                   onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">
+              <div class="attraction-img-placeholder" style="display:none">PHOTO</div>
+            </div>` : ''}
         </div>
         <div class="activity-actions">
           ${a.mapUrl ? `<a class="map-link" href="${a.mapUrl}" target="_blank" rel="noopener">地圖</a>` : ''}
@@ -174,6 +185,16 @@ const App = (() => {
         </div>
       </li>
     `;
+  }
+
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const toggle  = document.getElementById('sidebar-toggle');
+    const isOpen  = sidebar.classList.toggle('open');
+    if (overlay) overlay.classList.toggle('open', isOpen);
+    if (toggle)  toggle.classList.toggle('open', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
   }
 
   function toggleDay(key) {
@@ -185,12 +206,13 @@ const App = (() => {
   }
 
   function buildDayMapUrl(activities) {
-    const places = activities
-      .filter(a => a.attractionEN || a.attractionCN)
-      .map(a => encodeURIComponent((a.attractionEN || a.attractionCN) + ', UK'));
-    if (!places.length) return null;
-    if (places.length === 1) return `https://www.google.com/maps/search/${places[0]}`;
-    return `https://www.google.com/maps/dir/${places.join('/')}`;
+    const mapUrls = activities.filter(a => a.mapUrl).map(a => a.mapUrl);
+    if (mapUrls.length === 1) return mapUrls[0];
+    if (mapUrls.length > 1)  return `https://www.google.com/maps/dir/${mapUrls.map(encodeURIComponent).join('/')}`;
+    const names = activities.filter(a => a.attractionEN).map(a => a.attractionEN);
+    if (names.length === 1) return `https://www.google.com/maps/search/${encodeURIComponent(names[0])}`;
+    if (names.length > 1)  return `https://www.google.com/maps/dir/${names.map(encodeURIComponent).join('/')}`;
+    return null;
   }
 
   // ── Expenses ────────────────────────────────────────────────────────
@@ -227,7 +249,7 @@ const App = (() => {
       el.innerHTML = `
         <table class="expense-table">
           <thead>
-            <tr><th>日期</th><th>項目</th><th>類別</th><th>金額（£）</th><th>備注</th><th></th></tr>
+            <tr><th>日期</th><th>項目</th><th>類別</th><th>金額（£）</th><th>備註</th><th></th></tr>
           </thead>
           <tbody>
             ${expenses.map(e => `
@@ -389,10 +411,15 @@ const App = (() => {
           <button class="btn-ghost" onclick="App.openModal('attraction','${a.id}')">編輯</button>
           <button class="btn-danger" onclick="App.deleteItem('${a.id}','attractions')">刪除</button>
         </div>
-        ${a.image
-          ? `<img class="attraction-img" src="${a.image}" alt="${escHtml(a.nameCN)}" loading="lazy" onerror="this.style.display='none'">`
-          : `<div class="attraction-img-placeholder">PHOTO</div>`
-        }
+        <div class="img-frame-wrap">
+          <div class="img-frame-corners"></div>
+          ${a.image
+            ? `<img class="attraction-img" src="${a.image}" alt="${escHtml(a.nameCN)}" loading="lazy"
+                 onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div class="attraction-img-placeholder" style="display:none">PHOTO</div>`
+            : `<div class="attraction-img-placeholder">PHOTO</div>`
+          }
+        </div>
         <div class="attraction-body">
           ${a.city ? `<div class="attraction-city">${escHtml(a.city).toUpperCase()}</div>` : ''}
           <div class="attraction-name-cn">${escHtml(a.nameCN)}</div>
@@ -576,7 +603,7 @@ const App = (() => {
     if (!el) return;
     el.value = value;
     el.style.transition = 'background 0.6s ease';
-    el.style.background = 'rgba(107,143,113,0.15)';
+    el.style.background = 'rgba(194,43,31,0.15)';
     setTimeout(() => { el.style.background = ''; }, 2000);
   }
 
@@ -601,7 +628,7 @@ const App = (() => {
           { key: 'Day',  label: '第幾天', type: 'number', placeholder: '例: 1' },
         ]},
         { row: [
-          { key: 'Time', label: '時間',     type: 'text', placeholder: '09:00 - 11:00' },
+          { key: 'Time', label: '時間',     type: 'time-range' },
           { key: 'Name', label: '活動名稱', type: 'text', placeholder: '參觀大英博物館', required: true },
         ]},
         { row: [
@@ -609,19 +636,20 @@ const App = (() => {
           { key: 'AttractionEN', label: '景點名稱（英文）', type: 'text', placeholder: 'British Museum' },
         ]},
         { key: 'GoogleMaps', label: 'Google Maps 連結', type: 'url', placeholder: 'https://maps.app.goo.gl/...' },
-        { key: 'Notes',      label: '備注',            type: 'textarea', placeholder: '需提前預約...' },
+        { key: 'Image',      label: '活動圖片連結（選填）', type: 'url', placeholder: 'https://... （直接圖片網址）' },
+        { key: 'Notes',      label: '備註',            type: 'textarea', placeholder: '需提前預約...' },
       ],
       toProps: (d) => ({
         Name: prop.title(d.Name), Date: prop.date(d.Date), Day: prop.number(d.Day),
         Time: prop.text(d.Time), AttractionCN: prop.text(d.AttractionCN),
         AttractionEN: prop.text(d.AttractionEN), GoogleMaps: prop.url(d.GoogleMaps),
-        Notes: prop.text(d.Notes),
+        Image: prop.url(d.Image), Notes: prop.text(d.Notes),
       }),
       dbKey: 'ITINERARY', reload: loadItinerary,
       fillItem: (item) => ({
         Name: item.name, Date: item._date, Day: item._day, Time: item.time,
         AttractionCN: item.attractionCN, AttractionEN: item.attractionEN,
-        GoogleMaps: item.mapUrl, Notes: item.notes,
+        GoogleMaps: item.mapUrl, Image: item.image, Notes: item.notes,
       }),
     },
 
@@ -637,7 +665,7 @@ const App = (() => {
           { key: 'Name',     label: '項目名稱', type: 'text',   placeholder: '午餐', required: true },
           { key: 'Category', label: '類別',     type: 'select', options: ['餐飲','交通','門票','購物','住宿','其他'] },
         ]},
-        { key: 'Notes', label: '備注', type: 'textarea', placeholder: '...' },
+        { key: 'Notes', label: '備註', type: 'textarea', placeholder: '...' },
       ],
       toProps: (d) => ({
         Name: prop.title(d.Name), Date: prop.date(d.Date),
@@ -663,7 +691,7 @@ const App = (() => {
           { key: 'Amount', label: '金額（£）', type: 'number', placeholder: '0.00' },
         ]},
         { key: 'Link',  label: '票券連結', type: 'url',      placeholder: 'https://...' },
-        { key: 'Notes', label: '備注',     type: 'textarea', placeholder: '...' },
+        { key: 'Notes', label: '備註',     type: 'textarea', placeholder: '...' },
       ],
       toProps: (d) => ({
         Name: prop.title(d.Name), Type: prop.select(d.Type), Date: prop.date(d.Date),
@@ -691,7 +719,7 @@ const App = (() => {
         },
         { key: 'Description', label: '景點介紹', type: 'textarea', placeholder: '...' },
         { key: 'GoogleMaps',  label: 'Google Maps 連結', type: 'url', placeholder: 'https://maps.app.goo.gl/...' },
-        { key: 'Image',       label: '封面圖片連結（選填）', type: 'url', placeholder: 'https://...' },
+        { key: 'Image',       label: '封面圖片連結（選填）', type: 'url', placeholder: 'https://... （Google Drive 分享連結無法顯示，請用直接圖片網址）' },
       ],
       toProps: (d) => ({
         NameCN: prop.title(d.NameCN), NameEN: prop.text(d.NameEN),
@@ -743,7 +771,18 @@ const App = (() => {
       const values = schema.fillItem(itemStore[id]);
       Object.entries(values).forEach(([key, val]) => {
         const el = document.getElementById(`field-${key}`);
-        if (el && val != null) el.value = val;
+        if (!el || val == null) return;
+        const wrap = document.getElementById(`field-${key}-wrap`);
+        if (wrap) {
+          const parts = String(val).split(' - ');
+          const startEl = document.getElementById(`field-${key}-start`);
+          const endEl   = document.getElementById(`field-${key}-end`);
+          if (startEl) startEl.value = parts[0] || '';
+          if (endEl)   endEl.value   = parts[1] || '';
+          el.value = val;
+        } else {
+          el.value = val;
+        }
       });
     }
   }
@@ -784,7 +823,31 @@ const App = (() => {
     `;
   }
 
+  function buildTimeRangeField(f) {
+    const fid = `field-${f.key}`;
+    return `
+      <div class="form-group">
+        <label class="form-label">${f.label}</label>
+        <div class="time-range-wrap" id="${fid}-wrap">
+          <input class="form-input time-input" id="${fid}-start" type="time"
+                 onchange="App.syncTimeRange('${f.key}')">
+          <span class="time-range-sep">—</span>
+          <input class="form-input time-input" id="${fid}-end" type="time"
+                 onchange="App.syncTimeRange('${f.key}')">
+          <input type="hidden" id="${fid}" name="${f.key}" value="">
+        </div>
+      </div>
+    `;
+  }
+
+  function syncTimeRange(key) {
+    const s = document.getElementById(`field-${key}-start`).value;
+    const e = document.getElementById(`field-${key}-end`).value;
+    document.getElementById(`field-${key}`).value = s && e ? `${s} - ${e}` : (s || e || '');
+  }
+
   function buildField(f) {
+    if (f.type === 'time-range') return buildTimeRangeField(f);
     const fid = `field-${f.key}`;
     let input;
 
@@ -918,7 +981,8 @@ const App = (() => {
 
   return {
     openModal, closeModal, saveModal, deleteItem,
-    filterAttractions, toggleDay, scanReceipt,
+    filterAttractions, toggleDay, toggleSidebar,
+    scanReceipt, syncTimeRange,
     installPwa, dismissPwa, init,
   };
 })();

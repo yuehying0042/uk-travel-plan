@@ -10,6 +10,8 @@ const App = (() => {
   let ticketFilter   = 'all';
   const itemStore    = {};
   let deferredPwa    = null;
+  let pendingImage   = null;
+  let clearLocalImg  = false;
 
   // ── Notion API ──────────────────────────────────────────────────────
 
@@ -170,10 +172,10 @@ const App = (() => {
               ${escHtml(a.attractionCN)}${a.attractionEN ? ` · <em>${escHtml(a.attractionEN)}</em>` : ''}
             </div>` : ''}
           ${a.notes ? `<div class="activity-sub" style="margin-top:2px">${escHtml(a.notes)}</div>` : ''}
-          ${a.image ? `
+          ${(getLocalImage(a.id) || a.image) ? `
             <div class="activity-img-wrap img-frame-wrap">
               <div class="img-frame-corners"></div>
-              <img class="attraction-img" src="${a.image}" alt="${escHtml(a.name)}" loading="lazy"
+              <img class="attraction-img" src="${getLocalImage(a.id) || a.image}" alt="${escHtml(a.name)}" loading="lazy"
                    onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">
               <div class="attraction-img-placeholder" style="display:none">PHOTO</div>
             </div>` : ''}
@@ -364,7 +366,12 @@ const App = (() => {
           <div class="ticket-amount">£${t.amount.toFixed(2)}</div>
         </div>
         ${t.notes ? `<div class="ticket-notes">${escHtml(t.notes)}</div>` : ''}
-        ${t.link ? `<a class="map-link" href="${t.link}" target="_blank" rel="noopener" style="margin-top:12px;display:inline-flex">查看票券</a>` : ''}
+        ${getLocalImage(t.id) ? `
+          <div class="img-frame-wrap" style="margin-top:12px">
+            <div class="img-frame-corners"></div>
+            <img class="ticket-img" src="${getLocalImage(t.id)}" alt="${escHtml(t.name)}" loading="lazy"
+                 onerror="this.onerror=null;this.style.display='none'">
+          </div>` : ''}
       </div>
     `).join('')}</div>`;
   }
@@ -405,7 +412,9 @@ const App = (() => {
       return;
     }
 
-    el.innerHTML = `<div class="attraction-grid">${list.map((a, i) => `
+    el.innerHTML = `<div class="attraction-grid">${list.map((a, i) => {
+      const imgSrc = getLocalImage(a.id) || a.image;
+      return `
       <div class="attraction-card" id="att-${a.id}" style="animation-delay:${i * 0.07}s">
         <div class="attraction-actions">
           <button class="btn-ghost" onclick="App.openModal('attraction','${a.id}')">編輯</button>
@@ -413,8 +422,8 @@ const App = (() => {
         </div>
         <div class="img-frame-wrap">
           <div class="img-frame-corners"></div>
-          ${a.image
-            ? `<img class="attraction-img" src="${a.image}" alt="${escHtml(a.nameCN)}" loading="lazy"
+          ${imgSrc
+            ? `<img class="attraction-img" src="${imgSrc}" alt="${escHtml(a.nameCN)}" loading="lazy"
                  onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">
                <div class="attraction-img-placeholder" style="display:none">PHOTO</div>`
             : `<div class="attraction-img-placeholder">PHOTO</div>`
@@ -430,7 +439,7 @@ const App = (() => {
           </div>
         </div>
       </div>
-    `).join('')}</div>`;
+    `; }).join('')}</div>`;
   }
 
   function filterAttractions(q) {
@@ -616,6 +625,66 @@ const App = (() => {
     });
   }
 
+  // ── Local Image Storage ──────────────────────────────────────────────
+
+  function getLocalImage(id) {
+    return localStorage.getItem(`local_img_${id}`) || null;
+  }
+
+  function compressImage(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 800;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else        { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.72));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleImageUpload(key, input) {
+    const file = input.files[0];
+    if (!file) return;
+    const fid = `field-${key}`;
+    const previewEl = document.getElementById(`${fid}-preview`);
+    const imgEl     = document.getElementById(`${fid}-img`);
+    const btnEl     = document.getElementById(`${fid}-btn`);
+    try {
+      const compressed = await compressImage(file);
+      pendingImage  = compressed;
+      clearLocalImg = false;
+      if (imgEl)     imgEl.src = compressed;
+      if (previewEl) previewEl.style.display = 'block';
+      if (btnEl)     btnEl.style.display = 'none';
+    } catch (err) {
+      console.error('圖片壓縮失敗', err);
+    }
+  }
+
+  function clearUploadPreview(key) {
+    const fid = `field-${key}`;
+    const previewEl = document.getElementById(`${fid}-preview`);
+    const imgEl     = document.getElementById(`${fid}-img`);
+    const btnEl     = document.getElementById(`${fid}-btn`);
+    if (previewEl) previewEl.style.display = 'none';
+    if (imgEl)     imgEl.src = '';
+    if (btnEl)     btnEl.style.display = '';
+    pendingImage  = null;
+    clearLocalImg = true;
+  }
+
   // ── Modal & Forms ────────────────────────────────────────────────────
 
   const FORMS = {
@@ -636,20 +705,20 @@ const App = (() => {
           { key: 'AttractionEN', label: '景點名稱（英文）', type: 'text', placeholder: 'British Museum' },
         ]},
         { key: 'GoogleMaps', label: 'Google Maps 連結', type: 'url', placeholder: 'https://maps.app.goo.gl/...' },
-        { key: 'Image',      label: '活動圖片連結（選填）', type: 'url', placeholder: 'https://... （直接圖片網址）' },
+        { key: 'Image',      label: '活動圖片（選填）', type: 'image-upload' },
         { key: 'Notes',      label: '備註',            type: 'textarea', placeholder: '需提前預約...' },
       ],
       toProps: (d) => ({
         Name: prop.title(d.Name), Date: prop.date(d.Date), Day: prop.number(d.Day),
         Time: prop.text(d.Time), AttractionCN: prop.text(d.AttractionCN),
         AttractionEN: prop.text(d.AttractionEN), GoogleMaps: prop.url(d.GoogleMaps),
-        Image: prop.url(d.Image), Notes: prop.text(d.Notes),
+        Notes: prop.text(d.Notes),
       }),
       dbKey: 'ITINERARY', reload: loadItinerary,
       fillItem: (item) => ({
         Name: item.name, Date: item._date, Day: item._day, Time: item.time,
         AttractionCN: item.attractionCN, AttractionEN: item.attractionEN,
-        GoogleMaps: item.mapUrl, Image: item.image, Notes: item.notes,
+        GoogleMaps: item.mapUrl, Notes: item.notes,
       }),
     },
 
@@ -690,17 +759,17 @@ const App = (() => {
           { key: 'Date',   label: '日期',     type: 'date' },
           { key: 'Amount', label: '金額（£）', type: 'number', placeholder: '0.00' },
         ]},
-        { key: 'Link',  label: '票券連結', type: 'url',      placeholder: 'https://...' },
+        { key: 'Image', label: '票券圖片（選填）', type: 'image-upload' },
         { key: 'Notes', label: '備註',     type: 'textarea', placeholder: '...' },
       ],
       toProps: (d) => ({
         Name: prop.title(d.Name), Type: prop.select(d.Type), Date: prop.date(d.Date),
-        Amount: prop.number(d.Amount), Link: prop.url(d.Link), Notes: prop.text(d.Notes),
+        Amount: prop.number(d.Amount), Notes: prop.text(d.Notes),
       }),
       dbKey: 'TICKETS', reload: loadTickets,
       fillItem: (item) => ({
         Name: item.name, Type: item.type, Date: item.date,
-        Amount: item.amount, Link: item.link, Notes: item.notes,
+        Amount: item.amount, Notes: item.notes,
       }),
     },
 
@@ -719,17 +788,17 @@ const App = (() => {
         },
         { key: 'Description', label: '景點介紹', type: 'textarea', placeholder: '...' },
         { key: 'GoogleMaps',  label: 'Google Maps 連結', type: 'url', placeholder: 'https://maps.app.goo.gl/...' },
-        { key: 'Image',       label: '封面圖片連結（選填）', type: 'url', placeholder: 'https://... （Google Drive 分享連結無法顯示，請用直接圖片網址）' },
+        { key: 'Image',       label: '封面圖片（選填）', type: 'image-upload' },
       ],
       toProps: (d) => ({
         NameCN: prop.title(d.NameCN), NameEN: prop.text(d.NameEN),
         City: prop.select(d.City), Description: prop.text(d.Description),
-        GoogleMaps: prop.url(d.GoogleMaps), Image: prop.url(d.Image),
+        GoogleMaps: prop.url(d.GoogleMaps),
       }),
       dbKey: 'ATTRACTIONS', reload: loadAttractions,
       fillItem: (item) => ({
         NameCN: item.nameCN, NameEN: item.nameEN, City: item.city,
-        Description: item.desc, GoogleMaps: item.mapUrl, Image: item.image,
+        Description: item.desc, GoogleMaps: item.mapUrl,
       }),
     },
 
@@ -840,6 +909,27 @@ const App = (() => {
     `;
   }
 
+  function buildImageUploadField(f) {
+    const fid = `field-${f.key}`;
+    const existingImg = editingId ? getLocalImage(editingId) : null;
+    return `
+      <div class="form-group">
+        <label class="form-label">${f.label || '圖片'}</label>
+        <div class="img-upload-area">
+          <div class="img-upload-preview" id="${fid}-preview" style="display:${existingImg ? 'block' : 'none'}">
+            <img src="${existingImg || ''}" id="${fid}-img" class="img-upload-thumb">
+            <button type="button" class="img-upload-clear" onclick="App.clearUploadPreview('${f.key}')">✕</button>
+          </div>
+          <label class="scanner-btn" id="${fid}-btn" style="${existingImg ? 'display:none' : ''}">
+            🖼 選擇圖片（JPG / PNG / WEBP）
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+              onchange="App.handleImageUpload('${f.key}', this)" style="display:none">
+          </label>
+        </div>
+      </div>
+    `;
+  }
+
   function syncTimeRange(key) {
     const s = document.getElementById(`field-${key}-start`).value;
     const e = document.getElementById(`field-${key}-end`).value;
@@ -847,7 +937,8 @@ const App = (() => {
   }
 
   function buildField(f) {
-    if (f.type === 'time-range') return buildTimeRangeField(f);
+    if (f.type === 'time-range')   return buildTimeRangeField(f);
+    if (f.type === 'image-upload') return buildImageUploadField(f);
     const fid = `field-${f.key}`;
     let input;
 
@@ -883,8 +974,17 @@ const App = (() => {
 
     try {
       const properties = schema.toProps(data);
-      if (editingId) await updatePage(editingId, properties);
-      else            await createPage(CONFIG.DB[schema.dbKey], properties);
+      let pageId = editingId;
+      if (editingId) {
+        await updatePage(editingId, properties);
+      } else {
+        const newPage = await createPage(CONFIG.DB[schema.dbKey], properties);
+        pageId = newPage.id;
+      }
+      if (pageId) {
+        if (pendingImage)   localStorage.setItem(`local_img_${pageId}`, pendingImage);
+        else if (clearLocalImg) localStorage.removeItem(`local_img_${pageId}`);
+      }
       closeModal();
       await schema.reload();
     } catch (err) {
@@ -896,8 +996,10 @@ const App = (() => {
 
   function closeModal() {
     document.getElementById('modal-overlay').classList.remove('open');
-    currentModal = null;
-    editingId    = null;
+    currentModal  = null;
+    editingId     = null;
+    pendingImage  = null;
+    clearLocalImg = false;
   }
 
   // ── Delete ──────────────────────────────────────────────────────────
@@ -906,6 +1008,7 @@ const App = (() => {
     if (!confirm('確定要刪除嗎？此動作無法復原。')) return;
     try {
       await archivePage(id);
+      localStorage.removeItem(`local_img_${id}`);
       delete itemStore[id];
       loadSection(section);
     } catch (e) {
@@ -983,6 +1086,7 @@ const App = (() => {
     openModal, closeModal, saveModal, deleteItem,
     filterAttractions, toggleDay, toggleSidebar,
     scanReceipt, syncTimeRange,
+    handleImageUpload, clearUploadPreview,
     installPwa, dismissPwa, init,
   };
 })();

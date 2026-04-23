@@ -18,5 +18,8 @@ const CONFIG = {
   TRIP: {
     TITLE:    '英國旅遊計畫',
     DURATION: 14,
-  }
+  },
+
+  // 圖片雲端同步：至 https://api.imgbb.com 取得免費 API Key 後填入
+  IMGBB_KEY: '',
 };

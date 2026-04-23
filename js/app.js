@@ -625,10 +625,25 @@ const App = (() => {
     });
   }
 
-  // ── Local Image Storage ──────────────────────────────────────────────
+  // ── Image Storage ────────────────────────────────────────────────────
 
   function getLocalImage(id) {
     return localStorage.getItem(`local_img_${id}`) || null;
+  }
+
+  async function uploadImageToCloud(base64Data) {
+    if (!CONFIG.IMGBB_KEY) return null;
+    try {
+      const form = new FormData();
+      form.append('key', CONFIG.IMGBB_KEY);
+      form.append('image', base64Data.replace(/^data:[^;]+;base64,/, ''));
+      const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      return json?.data?.url || null;
+    } catch (err) {
+      console.warn('imgbb 上傳失敗:', err);
+      return null;
+    }
   }
 
   function compressImage(file) {
@@ -988,23 +1003,9 @@ const App = (() => {
       if (pageId) {
         if (pendingImage) {
           localStorage.setItem(`local_img_${pageId}`, pendingImage);
-          try {
-            const res = await fetch('/.netlify/functions/upload-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                imageData: pendingImage,
-                key: `img_${pageId.replace(/-/g, '')}`,
-              }),
-            });
-            const resJson = await res.json().catch(() => ({}));
-            if (res.ok && schema.imageKey && resJson.url) {
-              await updatePage(pageId, { [schema.imageKey]: prop.url(`${location.origin}${resJson.url}`) });
-            } else if (!res.ok) {
-              console.warn('圖片上傳失敗 HTTP', res.status, resJson.error || '');
-            }
-          } catch (err) {
-            console.warn('圖片同步失敗，已暫存本機:', err);
+          const cloudUrl = await uploadImageToCloud(pendingImage);
+          if (cloudUrl && schema.imageKey) {
+            await updatePage(pageId, { [schema.imageKey]: prop.url(cloudUrl) });
           }
         } else if (clearLocalImg) {
           localStorage.removeItem(`local_img_${pageId}`);

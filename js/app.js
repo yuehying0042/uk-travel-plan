@@ -997,12 +997,14 @@ const App = (() => {
                 key: `img_${pageId.replace(/-/g, '')}`,
               }),
             });
-            if (res.ok && schema.imageKey) {
-              const { url } = await res.json();
-              await updatePage(pageId, { [schema.imageKey]: prop.url(`${location.origin}${url}`) });
+            const resJson = await res.json().catch(() => ({}));
+            if (res.ok && schema.imageKey && resJson.url) {
+              await updatePage(pageId, { [schema.imageKey]: prop.url(`${location.origin}${resJson.url}`) });
+            } else if (!res.ok) {
+              console.warn('圖片上傳失敗 HTTP', res.status, resJson.error || '');
             }
           } catch (err) {
-            console.error('圖片同步失敗，已暫存本機:', err);
+            console.warn('圖片同步失敗，已暫存本機:', err);
           }
         } else if (clearLocalImg) {
           localStorage.removeItem(`local_img_${pageId}`);

@@ -20,6 +20,9 @@ const CONFIG = {
     DURATION: 14,
   },
 
-  // 圖片雲端同步：至 https://api.imgbb.com 取得免費 API Key 後填入
-  IMGBB_KEY: '',
+  // 圖片雲端同步（Cloudinary）
+  // CLOUDINARY_CLOUD：登入後儀表板左上角的 Cloud Name
+  // CLOUDINARY_PRESET：Settings → Upload → Upload presets → Unsigned preset 名稱
+  CLOUDINARY_CLOUD:  'dfexkmle6',
+  CLOUDINARY_PRESET: 'travel-photosuk',
 };

@@ -1,4 +1,4 @@
-const CACHE = 'uk-travel-v3';
+const CACHE = 'uk-travel-v4';
 const STATIC = [
   '/', '/index.html', '/css/style.css',
   '/js/config.js', '/js/app.js', '/manifest.json',

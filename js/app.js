@@ -172,10 +172,10 @@ const App = (() => {
               ${escHtml(a.attractionCN)}${a.attractionEN ? ` · <em>${escHtml(a.attractionEN)}</em>` : ''}
             </div>` : ''}
           ${a.notes ? `<div class="activity-sub" style="margin-top:2px">${escHtml(a.notes)}</div>` : ''}
-          ${(getLocalImage(a.id) || a.image) ? `
+          ${(a.image || getLocalImage(a.id)) ? `
             <div class="activity-img-wrap img-frame-wrap">
               <div class="img-frame-corners"></div>
-              <img class="attraction-img" src="${getLocalImage(a.id) || a.image}" alt="${escHtml(a.name)}" loading="lazy"
+              <img class="attraction-img" src="${a.image || getLocalImage(a.id)}" alt="${escHtml(a.name)}" loading="lazy"
                    onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">
               <div class="attraction-img-placeholder" style="display:none">PHOTO</div>
             </div>` : ''}
@@ -366,10 +366,10 @@ const App = (() => {
           <div class="ticket-amount">£${t.amount.toFixed(2)}</div>
         </div>
         ${t.notes ? `<div class="ticket-notes">${escHtml(t.notes)}</div>` : ''}
-        ${getLocalImage(t.id) ? `
+        ${(t.link || getLocalImage(t.id)) ? `
           <div class="img-frame-wrap" style="margin-top:12px">
             <div class="img-frame-corners"></div>
-            <img class="ticket-img" src="${getLocalImage(t.id)}" alt="${escHtml(t.name)}" loading="lazy"
+            <img class="ticket-img" src="${t.link || getLocalImage(t.id)}" alt="${escHtml(t.name)}" loading="lazy"
                  onerror="this.onerror=null;this.style.display='none'">
           </div>` : ''}
       </div>
@@ -413,7 +413,7 @@ const App = (() => {
     }
 
     el.innerHTML = `<div class="attraction-grid">${list.map((a, i) => {
-      const imgSrc = getLocalImage(a.id) || a.image;
+      const imgSrc = a.image || getLocalImage(a.id);
       return `
       <div class="attraction-card" id="att-${a.id}" style="animation-delay:${i * 0.07}s">
         <div class="attraction-actions">
@@ -714,7 +714,7 @@ const App = (() => {
         AttractionEN: prop.text(d.AttractionEN), GoogleMaps: prop.url(d.GoogleMaps),
         Notes: prop.text(d.Notes),
       }),
-      dbKey: 'ITINERARY', reload: loadItinerary,
+      dbKey: 'ITINERARY', reload: loadItinerary, imageKey: 'Image',
       fillItem: (item) => ({
         Name: item.name, Date: item._date, Day: item._day, Time: item.time,
         AttractionCN: item.attractionCN, AttractionEN: item.attractionEN,
@@ -766,7 +766,7 @@ const App = (() => {
         Name: prop.title(d.Name), Type: prop.select(d.Type), Date: prop.date(d.Date),
         Amount: prop.number(d.Amount), Notes: prop.text(d.Notes),
       }),
-      dbKey: 'TICKETS', reload: loadTickets,
+      dbKey: 'TICKETS', reload: loadTickets, imageKey: 'Link',
       fillItem: (item) => ({
         Name: item.name, Type: item.type, Date: item.date,
         Amount: item.amount, Notes: item.notes,
@@ -795,7 +795,7 @@ const App = (() => {
         City: prop.select(d.City), Description: prop.text(d.Description),
         GoogleMaps: prop.url(d.GoogleMaps),
       }),
-      dbKey: 'ATTRACTIONS', reload: loadAttractions,
+      dbKey: 'ATTRACTIONS', reload: loadAttractions, imageKey: 'Image',
       fillItem: (item) => ({
         NameCN: item.nameCN, NameEN: item.nameEN, City: item.city,
         Description: item.desc, GoogleMaps: item.mapUrl,
@@ -911,7 +911,11 @@ const App = (() => {
 
   function buildImageUploadField(f) {
     const fid = `field-${f.key}`;
-    const existingImg = editingId ? getLocalImage(editingId) : null;
+    let existingImg = null;
+    if (editingId && itemStore[editingId]) {
+      const it = itemStore[editingId];
+      existingImg = it.image || it.link || getLocalImage(editingId);
+    }
     return `
       <div class="form-group">
         <label class="form-label">${f.label || '圖片'}</label>
@@ -982,8 +986,30 @@ const App = (() => {
         pageId = newPage.id;
       }
       if (pageId) {
-        if (pendingImage)   localStorage.setItem(`local_img_${pageId}`, pendingImage);
-        else if (clearLocalImg) localStorage.removeItem(`local_img_${pageId}`);
+        if (pendingImage) {
+          localStorage.setItem(`local_img_${pageId}`, pendingImage);
+          try {
+            const res = await fetch('/.netlify/functions/upload-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                imageData: pendingImage,
+                key: `img_${pageId.replace(/-/g, '')}`,
+              }),
+            });
+            if (res.ok && schema.imageKey) {
+              const { url } = await res.json();
+              await updatePage(pageId, { [schema.imageKey]: prop.url(`${location.origin}${url}`) });
+            }
+          } catch (err) {
+            console.error('圖片同步失敗，已暫存本機:', err);
+          }
+        } else if (clearLocalImg) {
+          localStorage.removeItem(`local_img_${pageId}`);
+          if (schema.imageKey) {
+            await updatePage(pageId, { [schema.imageKey]: prop.url(null) }).catch(() => {});
+          }
+        }
       }
       closeModal();
       await schema.reload();

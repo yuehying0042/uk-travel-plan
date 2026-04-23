@@ -632,16 +632,19 @@ const App = (() => {
   }
 
   async function uploadImageToCloud(base64Data) {
-    if (!CONFIG.IMGBB_KEY) return null;
+    if (!CONFIG.CLOUDINARY_CLOUD || !CONFIG.CLOUDINARY_PRESET) return null;
     try {
       const form = new FormData();
-      form.append('key', CONFIG.IMGBB_KEY);
-      form.append('image', base64Data.replace(/^data:[^;]+;base64,/, ''));
-      const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
+      form.append('file',           base64Data);
+      form.append('upload_preset',  CONFIG.CLOUDINARY_PRESET);
+      const res  = await fetch(
+        `https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD}/image/upload`,
+        { method: 'POST', body: form }
+      );
       const json = await res.json();
-      return json?.data?.url || null;
+      return json?.secure_url || null;
     } catch (err) {
-      console.warn('imgbb 上傳失敗:', err);
+      console.warn('Cloudinary 上傳失敗:', err);
       return null;
     }
   }
@@ -1005,7 +1008,9 @@ const App = (() => {
           localStorage.setItem(`local_img_${pageId}`, pendingImage);
           const cloudUrl = await uploadImageToCloud(pendingImage);
           if (cloudUrl && schema.imageKey) {
-            await updatePage(pageId, { [schema.imageKey]: prop.url(cloudUrl) });
+            await updatePage(pageId, { [schema.imageKey]: prop.url(cloudUrl) }).catch(e => {
+              console.warn('圖片URL無法存入Notion（請確認資料庫有對應屬性）:', e.message);
+            });
           }
         } else if (clearLocalImg) {
           localStorage.removeItem(`local_img_${pageId}`);

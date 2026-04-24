@@ -161,17 +161,27 @@ const App = (() => {
   }
 
   function renderActivity(a, index = 0) {
+    const notesId = `notes-${a.id}`;
+    const isLong = a.notes && a.notes.length > 40;
     return `
       <li class="activity-item" id="act-${a.id}" style="animation-delay:${index * 0.06 + 0.1}s">
         <span class="timeline-dot"></span>
         <div class="activity-time">${a.time || '—'}</div>
+        <div class="activity-actions">
+          ${a.mapUrl ? `<a class="map-link" href="${a.mapUrl}" target="_blank" rel="noopener">地圖</a>` : ''}
+          <button class="btn-ghost" onclick="App.openModal('itinerary','${a.id}')">編輯</button>
+          <button class="btn-danger" onclick="App.deleteItem('${a.id}','itinerary')">刪除</button>
+        </div>
         <div class="activity-body">
           <div class="activity-name">${escHtml(a.name)}</div>
           ${a.attractionCN || a.attractionEN ? `
             <div class="activity-sub">
               ${escHtml(a.attractionCN)}${a.attractionEN ? ` · <em>${escHtml(a.attractionEN)}</em>` : ''}
             </div>` : ''}
-          ${a.notes ? `<div class="activity-sub" style="margin-top:2px">${escHtml(a.notes)}</div>` : ''}
+          ${a.notes ? `
+            <div class="activity-notes" id="${notesId}" onclick="App.toggleNotes('${notesId}')">${escHtml(a.notes)}</div>
+            ${isLong ? `<button class="activity-notes-toggle" id="tog-${notesId}" onclick="App.toggleNotes('${notesId}')">展開</button>` : ''}
+          ` : ''}
           ${(a.image || getLocalImage(a.id)) ? `
             <div class="activity-img-wrap img-frame-wrap">
               <div class="img-frame-corners"></div>
@@ -180,13 +190,16 @@ const App = (() => {
               <div class="attraction-img-placeholder" style="display:none">PHOTO</div>
             </div>` : ''}
         </div>
-        <div class="activity-actions">
-          ${a.mapUrl ? `<a class="map-link" href="${a.mapUrl}" target="_blank" rel="noopener">地圖</a>` : ''}
-          <button class="btn-ghost" onclick="App.openModal('itinerary','${a.id}')">編輯</button>
-          <button class="btn-danger" onclick="App.deleteItem('${a.id}','itinerary')">刪除</button>
-        </div>
       </li>
     `;
+  }
+
+  function toggleNotes(notesId) {
+    const el = document.getElementById(notesId);
+    const tog = document.getElementById('tog-' + notesId);
+    if (!el) return;
+    const expanded = el.classList.toggle('expanded');
+    if (tog) tog.textContent = expanded ? '收起' : '展開';
   }
 
   function toggleSidebar() {
@@ -1121,6 +1134,7 @@ const App = (() => {
     filterAttractions, toggleDay, toggleSidebar,
     scanReceipt, syncTimeRange,
     handleImageUpload, clearUploadPreview,
+    toggleNotes,
     installPwa, dismissPwa, init,
   };
 })();

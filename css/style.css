@@ -12,6 +12,16 @@
   --font:       'Microsoft JhengHei', '微軟正黑體', -apple-system, BlinkMacSystemFont, sans-serif;
   --sidebar-w:  224px;
   --transition: all 0.18s ease;
+
+  /* Spacing scale */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
 }
 
 /* ── Reset ─────────────────────────────────────── */
@@ -131,7 +141,7 @@ input, select, textarea { font-family: var(--font); }
 
 .section {
   display: none;
-  padding: 52px 56px 80px;
+  padding: var(--sp-7) var(--sp-7) var(--sp-8);
   max-width: 940px;
   animation: fadeIn 0.22s ease;
 }
@@ -148,7 +158,7 @@ input, select, textarea { font-family: var(--font); }
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 36px;
+  margin-bottom: var(--sp-7);
 }
 
 .section-tag {
@@ -239,7 +249,7 @@ input, select, textarea { font-family: var(--font); }
 }
 
 /* ── Itinerary ─────────────────────────────────── */
-.day-group { margin-bottom: 36px; }
+.day-group { margin-bottom: var(--sp-7); }
 
 .day-header {
   display: flex;
@@ -265,22 +275,6 @@ input, select, textarea { font-family: var(--font); }
 
 .activity-list { list-style: none; }
 
-.activity-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 13px 15px;
-  margin-bottom: 6px;
-  background: var(--surface);
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  transition: var(--transition);
-}
-
-.activity-item:hover {
-  border-color: var(--border);
-  background: var(--bg);
-}
 
 .activity-time {
   font-size: 11.5px;
@@ -920,8 +914,8 @@ input, select, textarea { font-family: var(--font); }
   .nav-label { font-size: 13.5px; }
 
   .main { margin-left: 0; margin-bottom: 0; }
-  .section { padding: 60px 20px 40px; }
-  .section-header { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .section { padding: 60px var(--sp-4) var(--sp-7); }
+  .section-header { flex-direction: column; align-items: flex-start; gap: var(--sp-3); }
 
   .form-row { grid-template-columns: 1fr; }
 
@@ -1067,9 +1061,9 @@ input, select, textarea { font-family: var(--font); }
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 11px 14px;
-  margin-bottom: 6px;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
   background: var(--bg);
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -1291,7 +1285,7 @@ input, select, textarea { font-family: var(--font); }
     order: 2;
     width: 100%;
     flex: none;
-    padding-left: 26px;
+    padding-left: var(--sp-5);
   }
 
   .activity-notes-toggle { display: inline-block; }

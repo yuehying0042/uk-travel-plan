@@ -1297,38 +1297,19 @@ input, select, textarea { font-family: var(--font); }
   .activity-notes-toggle { display: inline-block; }
 }
 
-/* ── Photo Frame ─────────────────────────────────── */
-.activity-img-outer {
+.activity-img-wrap {
   position: relative;
-  margin: 42px 0 42px;
+  margin-top: 10px;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
-.activity-img-outer .attraction-img {
-  display: block;
-  width: 100%;
+.activity-img-wrap .attraction-img {
   height: 120px;
+  width: 100%;
   object-fit: cover;
   border-radius: var(--radius);
 }
-
-.activity-img-outer .attraction-img-placeholder {
-  border-radius: var(--radius);
-}
-
-/* Corner ornaments: positioned outside the photo at each corner */
-.frame-c {
-  position: absolute;
-  width: 70px;
-  height: 70px;
-  pointer-events: none;
-  z-index: 2;
-  mix-blend-mode: multiply;
-}
-
-.frame-tl { top: -42px; left:  0; }
-.frame-tr { top: -42px; right: 0; }
-.frame-bl { bottom: -42px; left:  0; }
-.frame-br { bottom: -42px; right: 0; }
 
 /* ── Image Upload Field ──────────────────────────── */
 .img-upload-area { position: relative; }

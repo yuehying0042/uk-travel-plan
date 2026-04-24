@@ -183,8 +183,11 @@ const App = (() => {
             ${isLong ? `<button class="activity-notes-toggle" id="tog-${notesId}" onclick="App.toggleNotes('${notesId}')">展開</button>` : ''}
           ` : ''}
           ${(a.image || getLocalImage(a.id)) ? `
-            <div class="activity-img-wrap img-frame-wrap">
-              <div class="img-frame-corners"></div>
+            <div class="activity-img-outer">
+              <img class="frame-c frame-tl" src="/icons/frame-1.png" alt="" aria-hidden="true">
+              <img class="frame-c frame-tr" src="/icons/frame-2.png" alt="" aria-hidden="true">
+              <img class="frame-c frame-bl" src="/icons/frame-3.png" alt="" aria-hidden="true">
+              <img class="frame-c frame-br" src="/icons/frame-4.png" alt="" aria-hidden="true">
               <img class="attraction-img" src="${a.image || getLocalImage(a.id)}" alt="${escHtml(a.name)}" loading="lazy"
                    onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex'">
               <div class="attraction-img-placeholder" style="display:none">PHOTO</div>

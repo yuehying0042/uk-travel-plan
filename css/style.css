@@ -1315,27 +1315,27 @@ input, select, textarea { font-family: var(--font); }
 .img-frame-corners::after {
   content: '';
   position: absolute;
-  width: 72px;
-  height: 72px;
+  width: 84px;
+  height: 84px;
   z-index: 10;
   pointer-events: none;
-  background-size: 72px 72px;
+  background-size: 84px 84px;
   background-repeat: no-repeat;
 }
 
 .img-frame-corners {
   position: absolute;
-  inset: 0;
+  inset: -18px;
   pointer-events: none;
 }
 
 .img-frame-wrap::before {
-  top: 0; left: 0;
+  top: -18px; left: -18px;
   background-image: url('../icons/frame-tl.svg');
 }
 
 .img-frame-wrap::after {
-  top: 0; right: 0;
+  top: -18px; right: -18px;
   background-image: url('../icons/frame-tr.svg');
 }
 
@@ -1351,9 +1351,9 @@ input, select, textarea { font-family: var(--font); }
 
 .activity-img-wrap {
   position: relative;
-  margin-top: 10px;
+  margin: 22px 0 12px;
   border-radius: var(--radius);
-  overflow: hidden;
+  /* overflow visible so frame corners can extend outside the image */
 }
 
 .activity-img-wrap .attraction-img {
